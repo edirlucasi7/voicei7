@@ -1,7 +1,7 @@
 # Maven e arquivos gerados
-target/
-build/
-out/
+/target/
+/build/
+/out/
 .mvn/wrapper/maven-wrapper.jar
 .mvn/wrapper/MavenWrapperDownloader.java
 .flattened-pom.xml
