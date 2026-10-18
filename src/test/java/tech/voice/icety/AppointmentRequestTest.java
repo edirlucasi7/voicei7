@@ -18,4 +18,5 @@ class AppointmentRequestTest {
         assertThat(new AppointmentRequest(null, null, null, AFTERNOON, OTHER).period()).isEqualTo(AFTERNOON);
         assertThat(new AppointmentRequest(null, null, null, UNSPECIFIED, OTHER).period()).isEqualTo(UNSPECIFIED);
     }
+
 }

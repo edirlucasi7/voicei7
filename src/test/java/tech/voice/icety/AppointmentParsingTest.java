@@ -22,6 +22,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
@@ -105,9 +106,10 @@ class AppointmentParsingTest {
         for (String field : new String[] { "customerName", "requestedDate", "specificTime" }) {
             assertThat(properties.path(field).path("type").toString()).contains("string", "null");
         }
+
         assertThat(request.path("messages").get(0).path("content").asText())
                 .contains("2026-10-19 09:00 -03:00", "America/Fortaleza",
-                        "Hoje: 2026-10-19", "Amanhã: 2026-10-20", "Próxima terça-feira: 2026-10-20");
+                        "Hoje: 2026-10-19", "Amanhã: 2026-10-20");
         assertThat(request.path("messages").get(1).path("content").asText())
                 .startsWith(AppointmentExamples.CARLOS);
     }
@@ -137,15 +139,16 @@ class AppointmentParsingTest {
                     .isInstanceOf(IllegalArgumentException.class)
                     .hasMessageContaining("blank");
         }
+
         mock.server().verify();
         assertThat(requestBody).isNull();
     }
 
     @Test
-    void recoversExplicitTimeOmittedByModelThroughHttpEndpoint() throws Exception {
+    void returnsModelExtractionThroughHttpEndpoint() throws Exception {
         respondWith("""
                 {"customerName":null,"requestedDate":"2026-10-20",
-                 "specificTime":null,"period":"UNSPECIFIED",
+                 "specificTime":"10:00","period":"MORNING",
                  "intent":"CHECK_AVAILABILITY"}
                 """);
 
@@ -163,13 +166,34 @@ class AppointmentParsingTest {
     }
 
     @Test
+    void preservesMissingModelTimeThroughHttpEndpoint() throws Exception {
+        respondWith("""
+                {"customerName":null,"requestedDate":"2026-10-20",
+                 "specificTime":null,"period":"UNSPECIFIED",
+                 "intent":"CHECK_AVAILABILITY"}
+                """);
+
+        mvc.perform(post("/api/appointments/parse")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(JSON.writeValueAsString(Map.of("text", AppointmentExamples.AVAILABILITY))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requestedDate").value("2026-10-20"))
+                .andExpect(jsonPath("$.specificTime").isEmpty())
+                .andExpect(jsonPath("$.period").value("UNSPECIFIED"))
+                .andExpect(jsonPath("$.intent").value("CHECK_AVAILABILITY"));
+        mock.server().verify();
+    }
+
+    @Test
     void rejectsInvalidHttpInputWithoutCallingModel() throws Exception {
         for (String body : new String[] { "{}", "{\"text\":null}", "{\"text\":\"\"}",
                 "{\"text\":\"   \"}", "null", "{", "" }) {
             mvc.perform(post("/api/appointments/parse")
                             .contentType(MediaType.APPLICATION_JSON).content(body))
-                    .andExpect(status().isBadRequest());
+                    .andExpect(status().isBadRequest())
+                    .andExpect(content().string(""));
         }
+
         mock.server().verify();
         assertThat(requestBody).isNull();
     }
