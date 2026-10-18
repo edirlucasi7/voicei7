@@ -1,0 +1,62 @@
+# Maven e arquivos gerados
+target/
+build/
+out/
+.mvn/wrapper/maven-wrapper.jar
+.mvn/wrapper/MavenWrapperDownloader.java
+.flattened-pom.xml
+pom.xml.versionsBackup
+pom.xml.releaseBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+HELP.md
+
+# Configuracoes locais de IDEs
+.idea/
+.run/
+*.iml
+*.iws
+*.ipr
+.vscode/
+.classpath
+.project
+.settings/
+.factorypath
+.apt_generated/
+.springBeans
+.sts4-cache/
+/nbproject/private/
+/nbbuild/
+/nbdist/
+/.nb-gradle/
+
+# Ambiente e credenciais locais
+.env
+.env.*
+!.env.example
+.aws/
+.ssh/
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Configuracoes locais de assistentes
+.codex/
+.agents/
+
+# Logs, dumps e arquivos temporarios
+*.log
+*.hprof
+hs_err_pid*
+replay_pid*
+*.tmp
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
