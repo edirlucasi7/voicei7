@@ -12,12 +12,15 @@ class DayPeriodTest {
         for (String time : new String[] { "00:00", "05:59", "18:00", "23:59" }) {
             assertThat(DayPeriod.from(LocalTime.parse(time))).isEqualTo(EVENING);
         }
+
         for (String time : new String[] { "06:00", "10:00", "11:59" }) {
             assertThat(DayPeriod.from(LocalTime.parse(time))).isEqualTo(MORNING);
         }
+
         for (String time : new String[] { "12:00", "15:00", "17:59" }) {
             assertThat(DayPeriod.from(LocalTime.parse(time))).isEqualTo(AFTERNOON);
         }
+
         assertThat(DayPeriod.from(null)).isEqualTo(UNSPECIFIED);
     }
 }

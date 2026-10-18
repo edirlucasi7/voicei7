@@ -46,7 +46,8 @@ HELP.md
 
 # Configuracoes locais de assistentes
 .codex/
-.agents/
+/.agents/*
+!/.agents/skills/
 
 # Logs, dumps e arquivos temporarios
 *.log

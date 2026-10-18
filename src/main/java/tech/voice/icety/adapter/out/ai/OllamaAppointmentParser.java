@@ -1,8 +1,6 @@
 package tech.voice.icety.adapter.out.ai;
 
 import java.time.Clock;
-import java.time.DayOfWeek;
-import java.time.temporal.TemporalAdjusters;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Locale;
@@ -27,12 +25,12 @@ public class OllamaAppointmentParser implements AppointmentParser {
             Referências de calendário já calculadas:
             - Hoje: {todayDate}.
             - Amanhã: {tomorrowDate}.
-            - Próxima terça-feira: {nextTuesdayDate}.
             Quando a fala mencionar uma dessas referências, copie a data correspondente
             para requestedDate. Uma data relativa informada não é uma data ausente.
             Calcule outras datas relativas a partir da data atual.
-            "Amanhã" é o dia seguinte. "Próxima terça-feira" é a primeira terça
-            estritamente posterior à data atual. "Dia 20" é a próxima ocorrência
+            "Amanhã" é o dia seguinte. Para qualquer dia da semana mencionado como
+            "próximo", use a primeira ocorrência estritamente posterior à data atual.
+            "Dia 20" é a próxima ocorrência
             futura ou atual desse dia, em um mês que tenha esse dia.
             Não invente nome, data, horário, disponibilidade ou confirmação de consulta.
             Nome, data e horário ausentes devem ser null.
@@ -47,7 +45,7 @@ public class OllamaAppointmentParser implements AppointmentParser {
             Exemplos usando as referências de calendário acima:
             - "Tem vaga para amanhã às 10 horas?": requestedDate = {tomorrowDate},
               specificTime = "10:00", period = MORNING, intent = CHECK_AVAILABILITY.
-            - "Quero agendar na próxima terça à tarde": requestedDate = {nextTuesdayDate},
+            - "Quero agendar amanhã à tarde": requestedDate = {tomorrowDate},
               specificTime = null, period = AFTERNOON, intent = BOOK.
             - "Quero agendar, meu nome é Ana": customerName = "Ana", requestedDate = null,
               specificTime = null, period = UNSPECIFIED, intent = BOOK.
@@ -69,16 +67,17 @@ public class OllamaAppointmentParser implements AppointmentParser {
     public AppointmentRequest parse(String userText) {
         var now = ZonedDateTime.now(clock);
         var today = now.toLocalDate();
+
         ExtractedAppointment extracted = chatClient.prompt()
                 .system(sp -> sp.text(SYSTEM_PROMPT)
                         .param("currentDateTime", now.format(DATE_TIME))
                         .param("todayDate", today.toString())
-                        .param("tomorrowDate", today.plusDays(1).toString())
-                        .param("nextTuesdayDate", today.with(TemporalAdjusters.next(DayOfWeek.TUESDAY)).toString()))
+                        .param("tomorrowDate", today.plusDays(1).toString()))
                 .user(userText)
                 .options(OllamaChatOptions.builder().outputSchema(converter.getJsonSchema()))
                 .call()
                 .entity(converter);
+
         Assert.state(extracted != null, "The model did not return an appointment request");
         return extracted.toDomain();
     }
