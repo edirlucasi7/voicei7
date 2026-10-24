@@ -1,21 +1,18 @@
 package tech.voice.icety;
 
 import com.github.dockerjava.api.model.ExposedPort;
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.boot.WebApplicationType;
+import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.testcontainers.DockerClientFactory;
 import org.testcontainers.postgresql.PostgreSQLContainer;
-import tech.voice.icety.adapter.out.persistence.JdbcAgendaStore;
-import tech.voice.icety.adapter.out.persistence.JdbcAgendaTransaction;
-import tech.voice.icety.application.service.ManageAppointmentsService;
+import tech.voice.icety.application.port.in.ManageAppointmentsUseCase;
+import tech.voice.icety.application.port.out.AppointmentRepository;
 import tech.voice.icety.domain.model.Appointment;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -25,27 +22,25 @@ class PostgresPersistenceTest {
     void confirmedAppointmentSurvivesPostgresContainerRestart() throws Exception {
         try (var postgres = new PostgreSQLContainer("postgres:17")) {
             postgres.start();
-            var dataSource = new DriverManagerDataSource(postgres.getJdbcUrl(),
-                    postgres.getUsername(), postgres.getPassword());
-            var flyway = Flyway.configure().dataSource(dataSource).load();
-            flyway.migrate();
-            var jdbc = new JdbcTemplate(dataSource);
-            var store = new JdbcAgendaStore(jdbc);
-            var transaction = new JdbcAgendaTransaction(jdbc, new DataSourceTransactionManager(dataSource));
-            var service = new ManageAppointmentsService(store, transaction,
-                    Clock.fixed(Instant.parse("2026-10-24T12:00:00Z"), Appointment.ZONE),
-                    Duration.ofMinutes(2), Duration.ofSeconds(30));
-            service.startCall("restart-test");
-            var id = service.reserve("restart-test", LocalDateTime.parse("2026-10-25T10:00:00"))
-                    .value().appointment().id();
-            var confirmed = service.confirm(id, "restart-test", "Ana").appointment();
+            Appointment confirmed;
+            try (var context = application(postgres.getJdbcUrl(), postgres)) {
+                var service = context.getBean(ManageAppointmentsUseCase.class);
+                service.startCall("restart-test");
+                var time = LocalDateTime.now(Appointment.ZONE).plusDays(1)
+                        .withHour(10).withMinute(0).withSecond(0).withNano(0);
+                var id = service.reserve("restart-test", time).value().appointment().id();
+                service.confirm(id, "restart-test", "Ana");
+                // Compare database snapshots at PostgreSQL timestamp precision.
+                confirmed = context.getBean(AppointmentRepository.class).findById(id).orElseThrow();
+            }
 
             DockerClientFactory.instance().client().restartContainerCmd(postgres.getContainerId()).exec();
             // Docker may assign a different published port after the restart.
             var binding = DockerClientFactory.instance().client().inspectContainerCmd(postgres.getContainerId())
                     .exec().getNetworkSettings().getPorts().getBindings().get(ExposedPort.tcp(5432))[0];
-            dataSource.setUrl("jdbc:postgresql://" + postgres.getHost() + ":" + binding.getHostPortSpec()
-                    + "/" + postgres.getDatabaseName());
+            var url = "jdbc:postgresql://" + postgres.getHost() + ":" + binding.getHostPortSpec()
+                    + "/" + postgres.getDatabaseName();
+            var dataSource = new DriverManagerDataSource(url, postgres.getUsername(), postgres.getPassword());
             long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
             while (true) {
                 try (var connection = dataSource.getConnection()) {
@@ -61,9 +56,19 @@ class PostgresPersistenceTest {
                 Thread.sleep(100);
             }
 
-            assertThat(flyway.migrate().migrationsExecuted).isZero();
-            assertThat(store.appointment(id)).contains(confirmed);
-            assertThat(service.available(confirmed.dateTime())).isFalse();
+            try (var context = application(url, postgres)) {
+                assertThat(context.getBean(Flyway.class).migrate().migrationsExecuted).isZero();
+                assertThat(context.getBean(AppointmentRepository.class).findById(confirmed.id())).contains(confirmed);
+                assertThat(context.getBean(ManageAppointmentsUseCase.class).available(confirmed.dateTime())).isFalse();
+            }
         }
+    }
+
+    private ConfigurableApplicationContext application(String url, PostgreSQLContainer postgres) {
+        return new SpringApplicationBuilder(IcetyApplication.class).web(WebApplicationType.NONE).run(
+                "--spring.datasource.url=" + url,
+                "--spring.datasource.username=" + postgres.getUsername(),
+                "--spring.datasource.password=" + postgres.getPassword(),
+                "--reservation.cleanup-enabled=false", "--logging.level.root=WARN");
     }
 }

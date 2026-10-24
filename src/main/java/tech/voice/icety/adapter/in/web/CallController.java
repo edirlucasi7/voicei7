@@ -1,12 +1,13 @@
 package tech.voice.icety.adapter.in.web;
 
-import java.time.Instant;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import tech.voice.icety.adapter.in.web.dto.StartCall;
+import tech.voice.icety.adapter.in.web.dto.CallResponse;
 import tech.voice.icety.application.port.in.ManageAppointmentsUseCase;
 import tech.voice.icety.domain.model.CallSession;
 
@@ -39,8 +40,4 @@ public class CallController {
         return new CallResponse(call.id(), call.status().name(), call.lastActivityAt(), call.expiresAt(),
                 appointments.heartbeatInterval().toSeconds());
     }
-
-    public record StartCall(String callId) { }
-    public record CallResponse(String callId, String status, Instant lastActivityAt, Instant expiresAt,
-                               long heartbeatIntervalSeconds) { }
 }

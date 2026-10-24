@@ -52,7 +52,7 @@ tech.voice.icety
 ├── adapter/in/web          # Endpoints e erros HTTP
 ├── adapter/in/scheduling   # Limpeza periódica de ligações expiradas
 ├── adapter/out/ai          # OllamaAppointmentParser: prompt, esquema e integração Spring AI
-├── adapter/out/persistence # JDBC e lock pessimista
+├── adapter/out/persistence # Spring Data JPA e lock pessimista
 └── configuration           # Conecta implementações e parâmetros
 ```
 
@@ -203,14 +203,14 @@ propriedade ou horário `409` e timeout de lock `503`. Os novos erros usam
 
 ## Como o lock protege a reserva
 
-Uma linha singleton em `agenda` é bloqueada com `SELECT FOR UPDATE` por toda
-transação que altera ligação ou agendamento. A transação expira reservas vencidas,
+O `ScheduleJpaRepository` usa `@Lock(PESSIMISTIC_WRITE)` para coordenar as
+alterações da agenda em transações declarativas com `@Transactional`. A transação expira reservas vencidas,
 verifica ocupação e persiste a mudança antes de liberar o lock. Uma segunda
 requisição aguarda e consulta o estado atualizado. O banco também aplica índices
 únicos para horário ocupado e temporária por ligação.
 
 O lock permanece apenas durante essa transação, com espera limitada a cinco
-segundos. Durante a conversa, o estado persistido da reserva protege o horário.
+segundos via configuração da consulta JPA. Durante a conversa, o estado persistido da reserva protege o horário.
 Confirmação e encerramento concorrentes seguem a ordem de aquisição do lock.
 A estratégia serializa alterações da agenda única; novas agendas exigirão rever
 esse limite. Não há chamada ao Ollama dentro da transação.

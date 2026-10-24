@@ -1,5 +1,7 @@
 package tech.voice.icety.adapter.in.web;
 
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.dao.PessimisticLockingFailureException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -22,6 +24,16 @@ public class BookingExceptionHandler {
         var problem = ProblemDetail.forStatusAndDetail(status, exception.getMessage());
         problem.setProperty("code", exception.kind().name());
         return problem;
+    }
+
+    @ExceptionHandler(PessimisticLockingFailureException.class)
+    public ProblemDetail busy(PessimisticLockingFailureException exception) {
+        return booking(new BookingException(BookingException.Kind.BUSY, "Schedule is busy; retry shortly"));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ProblemDetail conflict(DataIntegrityViolationException exception) {
+        return booking(BookingException.conflict("Appointment time or call already has an active reservation"));
     }
 
     @ExceptionHandler({HttpMessageNotReadableException.class, MethodArgumentTypeMismatchException.class,
