@@ -8,6 +8,7 @@ Requisitos: Java 21 e Docker com Compose. Execute os comandos na raiz do projeto
 
 ```bash
 cp .env.example .env
+# Preencha DB_PASSWORD no .env com uma senha aleatória antes de continuar.
 docker compose up -d --wait postgres ollama
 docker compose exec ollama ollama pull qwen2.5:3b
 ./mvnw -Plocal-ai verify
@@ -60,6 +61,8 @@ Fluxos: controller → caso de uso → porta de saída → Ollama ou PostgreSQL.
 
 ## Configuração
 
+Defina uma senha aleatória em `DB_PASSWORD` no `.env` antes de iniciar os serviços. Para gerar uma senha, use `openssl rand -hex 32` e copie a saída apenas para o arquivo local. Nunca versione esse valor. O Compose recusa iniciar com a senha ausente ou vazia.
+
 O Spring importa o `.env` da raiz como um arquivo de propriedades. O `.env` fica fora do Git; `.env.example` documenta as variáveis. Variáveis exportadas no ambiente têm precedência.
 
 | Variável | Padrão | Uso |
@@ -69,7 +72,7 @@ O Spring importa o `.env` da raiz como um arquivo de propriedades. O `.env` fica
 | `DB_PORT` | `5432` | Porta local publicada pelo Compose |
 | `DB_URL` | `jdbc:postgresql://localhost:5432/icety` | Conexão com PostgreSQL |
 | `DB_USERNAME` | `icety` | Usuário da aplicação e do Compose |
-| `DB_PASSWORD` | `Obrigatoria, sem padrao` | Senha local da aplicação e do Compose |
+| `DB_PASSWORD` | Obrigatória, sem padrão | Senha definida no `.env` local ou no ambiente |
 | `RESERVATION_HEARTBEAT_INTERVAL` | `30s` | Frequência recomendada ao integrador, retornada no início da ligação |
 | `RESERVATION_CALL_TIMEOUT` | `2m` | Validade da ligação desde o último heartbeat |
 | `RESERVATION_CLEANUP_INTERVAL` | `30s` | Intervalo de limpeza das reservas vencidas |

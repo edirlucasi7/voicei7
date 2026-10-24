@@ -26,3 +26,5 @@ Organize o corpo dos metodos em blocos coesos, separados por uma linha em branco
 Teste as decisoes e invariantes diretamente no dominio: estados permitidos e recusados, preservacao dos demais campos e imutabilidade. Mantenha testes de caso de uso e HTTP que verifiquem a coordenacao e o contrato observavel. Evite testes que apenas reproduzam a estrutura interna do metodo.
 
 Execute `./mvnw test` na raiz do repositorio. O perfil `local-ai` depende de Ollama e serve para verificar o modelo real quando a tarefa exigir essa integracao.
+
+Nao versione senhas, tokens ou credenciais, nem como valores padrao em configuracoes locais, Compose, exemplos ou documentacao. Exija segredos por variaveis de ambiente ou arquivo `.env` ignorado pelo Git; exemplos devem deixar esses campos vazios. Testes de banco devem usar as credenciais descartaveis fornecidas pelo Testcontainers. Antes de concluir mudancas de infraestrutura, confira os arquivos alterados sem imprimir valores sensiveis.
