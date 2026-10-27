@@ -13,7 +13,7 @@ import static tech.voice.icety.domain.model.DayPeriod.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import(AppointmentTestConfiguration.class)
-class AppointmentParsingIT {
+class AppointmentParsingIT extends PostgresTestSupport {
 
     @Autowired
     private ParseAppointmentUseCase parser;

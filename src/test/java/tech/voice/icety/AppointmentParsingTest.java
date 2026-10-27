@@ -34,7 +34,7 @@ import static tech.voice.icety.domain.model.DayPeriod.*;
 
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
 @Import({AppointmentTestConfiguration.class, AppointmentParsingTest.HttpConfiguration.class})
-class AppointmentParsingTest {
+class AppointmentParsingTest extends PostgresTestSupport {
 
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private String requestBody;

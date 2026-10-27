@@ -15,5 +15,7 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Check Docker for PostgreSQL tests
+        run: docker info
       - name: Run tests
         run: ./mvnw --batch-mode test
