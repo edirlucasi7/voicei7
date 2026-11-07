@@ -5,9 +5,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 @SpringBootApplication
 public class IcetyApplication {
-
-	public static void main(String[] args) {
-		SpringApplication.run(IcetyApplication.class, args);
-	}
-
+    public static void main(String[] args) {
+        var context = SpringApplication.run(IcetyApplication.class, args);
+        if (context.getEnvironment().matchesProfiles("ingest")) {
+            context.close();
+        }
+    }
 }

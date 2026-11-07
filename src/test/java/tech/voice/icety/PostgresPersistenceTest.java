@@ -20,7 +20,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PostgresPersistenceTest {
     @Test
     void confirmedAppointmentSurvivesPostgresContainerRestart() throws Exception {
-        try (var postgres = new PostgreSQLContainer("postgres:17")) {
+        try (var postgres = new PostgreSQLContainer(org.testcontainers.utility.DockerImageName.parse("pgvector/pgvector:pg17")
+                .asCompatibleSubstituteFor("postgres"))) {
             postgres.start();
             Appointment confirmed;
             try (var context = application(postgres.getJdbcUrl(), postgres)) {

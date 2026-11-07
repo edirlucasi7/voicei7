@@ -11,7 +11,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import tech.voice.icety.domain.model.BookingException;
 
-@RestControllerAdvice(assignableTypes = {CallController.class, ReservationController.class})
+@RestControllerAdvice(assignableTypes = {CallController.class, ReservationController.class, ChatController.class})
 public class BookingExceptionHandler {
     @ExceptionHandler(BookingException.class)
     public ProblemDetail booking(BookingException exception) {

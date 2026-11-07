@@ -5,7 +5,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
 abstract class PostgresTestSupport {
-    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer("postgres:17");
+    static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
+            org.testcontainers.utility.DockerImageName.parse("pgvector/pgvector:pg17")
+                    .asCompatibleSubstituteFor("postgres"));
 
     static {
         POSTGRES.start();
