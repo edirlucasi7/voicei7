@@ -1,6 +1,6 @@
 # Icety — agendamento por voz
 
-A aplicação interpreta texto livre em `AppointmentRequest` e mantém uma agenda única no PostgreSQL. Durante a ligação, o horário escolhido fica reservado temporariamente; a confirmação explícita cria o compromisso definitivo. A integração com telefonia e a ligação automática entre parsing e reserva ficam para uma próxima etapa.
+A aplicação interpreta texto livre em `AppointmentRequest` e mantém uma agenda única no PostgreSQL. Durante a ligação, o horário escolhido fica reservado temporariamente; a confirmação explícita cria o compromisso definitivo. O atendimento por texto combina RAG e tools para operar a agenda durante uma ligação. A integração com telefonia fica para uma próxima etapa.
 
 ## Executar localmente
 
@@ -11,10 +11,11 @@ cp .env.example .env
 # Preencha DB_PASSWORD no .env com uma senha aleatória antes de continuar.
 docker compose up -d --wait postgres ollama
 docker compose exec ollama ollama pull qwen2.5:3b
+docker compose exec ollama ollama pull nomic-embed-text
 ./mvnw -Plocal-ai verify
 ```
 
-O download do modelo tem aproximadamente 1,9 GB, além da imagem Docker. A primeira inferência carrega o modelo na memória e pode demorar; a execução usa CPU e não exige GPU. O volume Docker preserva o modelo entre reinicializações. Para parar o serviço:
+O modelo de conversa tem aproximadamente 1,9 GB e o de embeddings aproximadamente 274 MB, além das imagens Docker. A primeira inferência carrega o modelo na memória e pode demorar; a execução usa CPU e não exige GPU. O volume Docker preserva o modelo entre reinicializações. Para parar o serviço:
 
 ```bash
 docker compose stop ollama
@@ -69,6 +70,10 @@ O Spring importa o `.env` da raiz como um arquivo de propriedades. O `.env` fica
 | --- | --- | --- |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Endereço do Ollama |
 | `OLLAMA_MODEL` | `qwen2.5:3b` | Modelo previamente baixado no Ollama |
+| `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Modelo local de embeddings com 768 dimensões |
+| `KNOWLEDGE_DIRECTORY` | `knowledge` | Pasta de arquivos TXT/Markdown UTF-8 |
+| `KNOWLEDGE_TOP_K` | `4` | Máximo de trechos recuperados por pergunta |
+| `KNOWLEDGE_SIMILARITY_THRESHOLD` | `0.5` | Similaridade mínima, de 0 a 1 |
 | `DB_PORT` | `5432` | Porta local publicada pelo Compose |
 | `DB_URL` | `jdbc:postgresql://localhost:5432/icety` | Conexão com PostgreSQL |
 | `DB_USERNAME` | `icety` | Usuário da aplicação e do Compose |
@@ -106,7 +111,7 @@ Exemplo para “Tem vaga para amanhã às 10 horas?”, considerando a referênc
 ./mvnw test
 ```
 
-Exige Docker ativo. Testcontainers sobe PostgreSQL 17 descartável, com credenciais e porta próprias, e aplica as migrations reais. Não usa nem apaga o banco do Compose. Executa também o teste de contexto e os testes do parser contra respostas HTTP simuladas com `MockRestServiceServer`, com a integração Spring AI real. Não requer Ollama ou chave. Verifica a requisição enviada, o contexto temporal, o esquema, a conversão do JSON, falhas de entrada/resposta e o endpoint com HTTP 200/400. Não avalia a interpretação linguística do modelo.
+Exige Docker ativo. Testcontainers sobe PostgreSQL 17 com pgvector descartável, com credenciais e porta próprias, e aplica as migrations reais. Não usa nem apaga o banco do Compose. Executa também o teste de contexto e os testes do parser contra respostas HTTP simuladas com `MockRestServiceServer`, com a integração Spring AI real. Não requer Ollama ou chave. Verifica a requisição enviada, o contexto temporal, o esquema, a conversão do JSON, falhas de entrada/resposta e o endpoint com HTTP 200/400. Não avalia a interpretação linguística do modelo.
 
 ```bash
 ./mvnw -Plocal-ai verify
@@ -118,7 +123,7 @@ A suíte também testa o ciclo de vida das reservas, os contratos HTTP, as restr
 
 O GitHub Actions executa `./mvnw --batch-mode test` em pushes e pull requests, com Java 21, Docker e cache Maven. Os testes com IA real são exclusivamente locais.
 
-Não há processamento de áudio, integração com provedor de telefonia, RAG ou divisão de documentos em chunks nesta etapa. RAG será relevante quando precisarmos recuperar informações externas para acrescentar ao contexto do modelo.
+Não há processamento de áudio nem integração com provedor de telefonia nesta etapa.
 
 
 ## Reservar durante uma ligação
@@ -225,3 +230,108 @@ O volume `postgres_data` mantém os dados após reiniciar o serviço. Para parar
 serviços, use `docker compose stop`; migrations são validadas pelo Flyway a cada
 inicialização. Depois de criar o volume, alterar `DB_USERNAME`/`DB_PASSWORD` não
 altera automaticamente as credenciais já existentes no PostgreSQL.
+
+## RAG: documentos e embeddings locais
+
+O RAG busca informações nos arquivos `.txt` e `.md` da pasta `knowledge/`, incluindo subpastas.
+Cada arquivo é dividido em trechos de até aproximadamente 500 tokens. O Ollama gera embeddings
+numéricos de 768 dimensões e o pgvector armazena texto, origem, posição e embedding.
+Perguntas usam o mesmo modelo para recuperar até quatro trechos relacionados.
+A agenda real é consultada pelas tools, nunca inferida dos documentos.
+
+O arquivo `knowledge/example.md` é **fictício**. Substitua-o por FAQ, serviços, endereço e orientações reais.
+Documentos não alteram regras de horário, duração ou reserva implementadas no domínio.
+Não há upload ou leitura de PDF nesta etapa.
+
+Após atualizar os arquivos, execute a ingestão explicitamente:
+
+```bash
+docker compose up -d --wait postgres ollama
+docker compose exec ollama ollama pull nomic-embed-text
+./mvnw spring-boot:run -Dspring-boot.run.profiles=ingest
+```
+
+O comando aplica migrations, ingere os arquivos, informa quantos foram atualizados, preservados
+ou excluídos e encerra sem abrir o servidor HTTP. A inicialização normal não ingere documentos
+nem chama o modelo de embeddings. A busca e a ingestão exigem o modelo previamente baixado.
+
+Hashes evitam duplicação e reprocessamento de arquivos inalterados. Arquivos alterados substituem
+seus trechos; arquivos removidos saem do índice após uma leitura completa da pasta.
+Pasta ausente ou ilegível faz o comando falhar. Uma pasta válida vazia remove todo o corpus.
+A atualização é transacional: falhas de embeddings preservam o índice anterior.
+Um lock exclusivo do catálogo serializa ingestões, sem bloquear a agenda; consultas continuam
+vendo o índice anterior até o commit. Execute um comando de ingestão por vez para indexar
+um retrato coerente dos arquivos, sem editá-los durante a execução.
+
+Para forçar reindexação de arquivos inalterados:
+
+```bash
+./mvnw spring-boot:run -Dspring-boot.run.profiles=ingest \
+  -Dspring-boot.run.arguments=--knowledge.reindex=true
+```
+
+Ingestão e consultas devem usar o mesmo modelo. Ao mudar para outro modelo de 768 dimensões,
+pare o atendimento, reindexe todo o corpus e reinicie com a mesma configuração.
+Modelos de outras dimensões exigem uma nova migration e reconstrução dos embeddings.
+
+O Compose agora usa `pgvector/pgvector:pg17`, mantendo PostgreSQL 17 e o volume existente.
+Recrie o serviço com `docker compose up -d --wait postgres` antes de iniciar a aplicação;
+não remova o volume. A migration V3 instala a extensão e cria o schema vetorial pelo Flyway.
+Um PostgreSQL externo também precisa disponibilizar a extensão `vector` e permitir sua criação.
+
+## Atendimento com ChatClient e tools
+
+Inicie o servidor normalmente, depois de ingerir os documentos:
+
+```bash
+./mvnw spring-boot:run
+```
+
+Use `/api/calls` para iniciar a ligação e mantenha o heartbeat nos endpoints existentes.
+Envie uma mensagem por vez para a mesma ligação:
+
+```bash
+curl -X POST http://localhost:8080/api/calls/ligacao-exemplo-001/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Qual é o endereço?"}'
+
+curl -X POST http://localhost:8080/api/calls/ligacao-exemplo-001/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Pode consultar e reservar amanhã às 10h, se estiver livre?"}'
+
+curl -X POST http://localhost:8080/api/calls/ligacao-exemplo-001/messages \
+  -H 'Content-Type: application/json' \
+  -d '{"text":"Sim, confirmo esse horário. Meu nome é Ana."}'
+```
+
+A resposta é `{"reply":"..."}`. O ChatClient recebe contexto documental e tools para consultar,
+reservar, liberar e confirmar. O servidor fornece o `callId` pelo `ToolContext`; esse identificador
+não faz parte dos argumentos escolhidos pela LLM. As tools delegam aos casos de uso existentes,
+preservando transações, propriedade, expiração e concorrência. Não há transação de agenda
+aberta durante inferência. Confirmação depende da interpretação da fala pela LLM; o prompt
+exige confirmação explícita e a tool rejeita `explicitlyConfirmed=false`.
+
+O histórico fica em memória por ligação, limitado a 20 mensagens, incluindo resultados de tools,
+para preservar o identificador da reserva entre turnos. Mensagens da mesma ligação são
+serializadas. A limpeza periódica remove históricos de ligações encerradas ou expiradas.
+Reiniciar perde o histórico, mas preserva os documentos indexados e a agenda.
+O endpoint não inicia nem renova ligações. Retorna `400` para texto inválido, `404` para ligação
+inexistente e `409` para ligação encerrada ou expirada. Falhas de infraestrutura não são
+convertidas em uma resposta de sucesso; se uma tool concluir antes de uma falha do modelo,
+a alteração já estará persistida e pode ser conferida pelos endpoints de agenda.
+
+O parser `/api/appointments/parse` continua independente, com saída estruturada e sem tools ou RAG.
+
+`./mvnw test` verifica embeddings e respostas HTTP simulados com Spring AI real e pgvector
+em Testcontainers: ingestão idempotente, alteração/exclusão, rollback, busca e conversa com tools.
+Os vetores simulados validam a integração, sem avaliar qualidade semântica.
+`./mvnw -Plocal-ai verify` também executa `KnowledgeAttendanceIT`, que avalia busca em português,
+resposta documental e reserva/confirmação com Ollama real em banco descartável.
+Essas avaliações podem falhar se o modelo interpretar incorretamente uma mensagem; não há
+resposta simulada substituindo o modelo no perfil local.
+
+Na avaliação local desta implementação com `qwen2.5:3b`, a busca vetorial em português
+funcionou, mas a conversa apresentou respostas vazias e não concluiu consistentemente
+reserva/confirmação. O perfil também registrou falhas de extração nos testes existentes
+do parser. O modelo permanece configurável por `OLLAMA_MODEL`; o fluxo com esse modelo
+ainda não está aprovado pela avaliação real, mesmo com os testes determinísticos passando.
