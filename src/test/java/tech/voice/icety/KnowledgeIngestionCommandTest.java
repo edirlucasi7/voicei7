@@ -19,6 +19,7 @@ class KnowledgeIngestionCommandTest extends PostgresTestSupport {
         var classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
         var process = new ProcessBuilder(java, "-cp", classpath, IcetyApplication.class.getName(),
                 "--spring.profiles.active=ingest", "--knowledge.directory=" + directory,
+                "--knowledge.ingest-on-startup=false", "--schedule.closed-days=SUNDAY",
                 "--spring.datasource.url=" + POSTGRES.getJdbcUrl(),
                 "--spring.datasource.username=" + POSTGRES.getUsername(),
                 "--spring.datasource.password=" + POSTGRES.getPassword(),

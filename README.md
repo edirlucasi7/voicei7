@@ -72,6 +72,8 @@ O Spring importa o `.env` da raiz como um arquivo de propriedades. O `.env` fica
 | `OLLAMA_MODEL` | `qwen2.5:3b` | Modelo previamente baixado no Ollama |
 | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Modelo local de embeddings com 768 dimensões |
 | `KNOWLEDGE_DIRECTORY` | `knowledge` | Pasta de arquivos TXT/Markdown UTF-8 |
+| `KNOWLEDGE_INGEST_ON_STARTUP` | `true` | Atualiza o índice documental ao iniciar a aplicação |
+| `SCHEDULE_CLOSED_DAYS` | `SUNDAY` | Dias fechados, separados por vírgula, com nomes de `DayOfWeek` em inglês |
 | `KNOWLEDGE_TOP_K` | `4` | Máximo de trechos recuperados por pergunta |
 | `KNOWLEDGE_SIMILARITY_THRESHOLD` | `0.5` | Similaridade mínima, de 0 a 1 |
 | `DB_PORT` | `5432` | Porta local publicada pelo Compose |
@@ -83,6 +85,26 @@ O Spring importa o `.env` da raiz como um arquivo de propriedades. O `.env` fica
 | `RESERVATION_CLEANUP_INTERVAL` | `30s` | Intervalo de limpeza das reservas vencidas |
 
 A temperatura é `0.0`, para reduzir a variação das respostas. Isso não garante que o modelo sempre interprete corretamente uma frase. Não há download automático do modelo ao iniciar o Spring.
+
+### Dias fechados: regra obrigatória da agenda
+
+Por padrão, a agenda não permite reservas aos domingos, no fuso `America/Fortaleza`.
+A configuração `SCHEDULE_CLOSED_DAYS` é a fonte dessa regra e também é informada à IA.
+Por exemplo, `SCHEDULE_CLOSED_DAYS=SATURDAY,SUNDAY` fecha os dois dias; uma lista vazia
+não fecha nenhum dia. Valores desconhecidos impedem a inicialização. Reinicie a aplicação
+após alterar a configuração.
+
+A consulta de disponibilidade retorna `{"available":false}` em dias fechados. Tentativas
+de reservar ou confirmar uma temporária nesses dias retornam `409` com código `CONFLICT`.
+As tools passam pela mesma validação: pedidos para ignorar a regra e informações
+contraditórias nos documentos não autorizam a operação. O texto da resposta depende do
+modelo, mas o bloqueio de persistência é feito pela agenda. Agendamentos já confirmados
+são preservados, inclusive na repetição da confirmação. Reservas temporárias antigas
+em dias fechados podem ser liberadas, mas não confirmadas.
+
+Não há faixa de abertura/fechamento nos demais dias nesta etapa. Políticas descritas
+somente em Markdown, como taxas e prazos, orientam respostas; para bloquear operações,
+precisam de validação estruturada no domínio, como a regra de dias fechados.
 
 ## Como funciona
 
@@ -241,9 +263,12 @@ A agenda real é consultada pelas tools, nunca inferida dos documentos.
 
 O arquivo `knowledge/example.md` é **fictício**. Substitua-o por FAQ, serviços, endereço e orientações reais.
 Documentos não alteram regras de horário, duração ou reserva implementadas no domínio.
+Em caso de divergência sobre dias fechados, prevalece `SCHEDULE_CLOSED_DAYS`.
 Não há upload ou leitura de PDF nesta etapa.
 
-Após atualizar os arquivos, execute a ingestão explicitamente:
+Ao iniciar a aplicação, os arquivos são ingeridos automaticamente, após as migrations.
+Os modelos precisam estar previamente baixados. Após editar os documentos, reinicie a
+aplicação ou execute a ingestão explicitamente:
 
 ```bash
 docker compose up -d --wait postgres ollama
@@ -252,8 +277,13 @@ docker compose exec ollama ollama pull nomic-embed-text
 ```
 
 O comando aplica migrations, ingere os arquivos, informa quantos foram atualizados, preservados
-ou excluídos e encerra sem abrir o servidor HTTP. A inicialização normal não ingere documentos
-nem chama o modelo de embeddings. A busca e a ingestão exigem o modelo previamente baixado.
+ou excluídos e encerra sem abrir o servidor HTTP. Na inicialização normal, o mesmo resumo
+é registrado e a aplicação continua atendendo. Se a ingestão falhar, a inicialização falha;
+uma atualização malsucedida preserva o índice anterior. Arquivos inalterados não chamam o
+modelo de embeddings. A busca e a ingestão de conteúdo novo exigem o modelo previamente baixado.
+
+Para desativar somente a ingestão automática, defina `KNOWLEDGE_INGEST_ON_STARTUP=false`.
+O perfil `ingest` continua executando a ingestão explícita mesmo com essa opção desativada.
 
 Hashes evitam duplicação e reprocessamento de arquivos inalterados. Arquivos alterados substituem
 seus trechos; arquivos removidos saem do índice após uma leitura completa da pasta.
@@ -281,7 +311,7 @@ Um PostgreSQL externo também precisa disponibilizar a extensão `vector` e perm
 
 ## Atendimento com ChatClient e tools
 
-Inicie o servidor normalmente, depois de ingerir os documentos:
+Inicie o servidor normalmente; a ingestão automática atualiza os documentos:
 
 ```bash
 ./mvnw spring-boot:run
@@ -303,6 +333,16 @@ curl -X POST http://localhost:8080/api/calls/ligacao-exemplo-001/messages \
   -H 'Content-Type: application/json' \
   -d '{"text":"Sim, confirmo esse horário. Meu nome é Ana."}'
 ```
+
+Para testar liberação, após criar uma reserva temporária e antes de confirmá-la, envie
+`{"text":"Quero cancelar essa reserva temporária."}` ao mesmo endpoint. A tool
+`releaseReservation` libera o horário; agendamentos confirmados não podem ser cancelados.
+
+Para verificar a proteção de dias fechados, inicie uma nova ligação e peça para reservar
+uma data futura que caia no domingo, inclusive pedindo para ignorar as regras. A agenda
+deve continuar sem reserva. A mesma tentativa diretamente em
+`POST /api/appointments/reservations` deve retornar `409`; a consulta de disponibilidade
+para essa data deve retornar `false`.
 
 A resposta é `{"reply":"..."}`. O ChatClient recebe contexto documental e tools para consultar,
 reservar, liberar e confirmar. O servidor fornece o `callId` pelo `ToolContext`; esse identificador
@@ -330,8 +370,10 @@ resposta documental e reserva/confirmação com Ollama real em banco descartáve
 Essas avaliações podem falhar se o modelo interpretar incorretamente uma mensagem; não há
 resposta simulada substituindo o modelo no perfil local.
 
-Na avaliação local desta implementação com `qwen2.5:3b`, a busca vetorial em português
-funcionou, mas a conversa apresentou respostas vazias e não concluiu consistentemente
-reserva/confirmação. O perfil também registrou falhas de extração nos testes existentes
-do parser. O modelo permanece configurável por `OLLAMA_MODEL`; o fluxo com esse modelo
-ainda não está aprovado pela avaliação real, mesmo com os testes determinísticos passando.
+Na avaliação local com `qwen2.5:3b`, o cenário de insistência para reservar no domingo
+foi recusado sem criar reserva. A busca vetorial em português funcionou, mas a resposta
+documental veio vazia e o cenário de reserva/confirmação falhou: o modelo anunciou que
+reservaria sem executar a reserva. Em avaliações anteriores, o perfil também registrou
+falhas de extração nos testes do parser. O modelo permanece configurável por `OLLAMA_MODEL`;
+o fluxo completo com esse modelo ainda não está aprovado pela avaliação real, mesmo com
+os testes determinísticos passando.
