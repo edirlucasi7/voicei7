@@ -12,6 +12,7 @@ import tech.voice.icety.application.port.out.AppointmentRepository;
 import tech.voice.icety.application.port.out.CallSessionRepository;
 import tech.voice.icety.domain.model.Appointment;
 import tech.voice.icety.domain.model.BookingException;
+import tech.voice.icety.domain.model.BusinessSchedule;
 import tech.voice.icety.domain.model.CallSession;
 
 public class ManageAppointmentsService implements ManageAppointmentsUseCase {
@@ -20,9 +21,10 @@ public class ManageAppointmentsService implements ManageAppointmentsUseCase {
     private final Clock clock;
     private final Duration timeout;
     private final Duration heartbeatInterval;
+    private final BusinessSchedule schedule;
 
     public ManageAppointmentsService(AppointmentRepository appointments, CallSessionRepository calls, Clock clock,
-                                     Duration timeout, Duration heartbeatInterval) {
+                                     Duration timeout, Duration heartbeatInterval, BusinessSchedule schedule) {
         if (heartbeatInterval.isNegative() || heartbeatInterval.isZero()
                 || timeout.compareTo(heartbeatInterval) <= 0) {
             throw new IllegalArgumentException("Call timeout must exceed a positive heartbeat interval");
@@ -33,6 +35,7 @@ public class ManageAppointmentsService implements ManageAppointmentsUseCase {
         this.clock = clock;
         this.timeout = timeout;
         this.heartbeatInterval = heartbeatInterval;
+        this.schedule = schedule;
     }
 
     @Override
@@ -76,13 +79,14 @@ public class ManageAppointmentsService implements ManageAppointmentsUseCase {
         Appointment.validateTime(dateTime);
         var now = clock.instant();
         return dateTime.isAfter(LocalDateTime.ofInstant(now, Appointment.ZONE))
+                && schedule.isOpen(dateTime)
                 && !appointments.isOccupied(dateTime, now);
     }
 
     @Override
     public Creation<Reservation> reserve(String callId, LocalDateTime dateTime) {
         CallSession.validateId(callId);
-        Appointment.validateTime(dateTime);
+        schedule.requireOpen(dateTime);
         var now = clock.instant();
         expireAt(now);
         var call = call(callId);
@@ -113,7 +117,7 @@ public class ManageAppointmentsService implements ManageAppointmentsUseCase {
         var appointment = appointment(id);
         appointment.requireOwner(callId);
         var call = call(callId);
-        var confirmed = appointment.confirm(call, customerName, now);
+        var confirmed = appointment.confirm(call, customerName, now, schedule);
         appointments.save(confirmed);
         return view(confirmed, call);
     }

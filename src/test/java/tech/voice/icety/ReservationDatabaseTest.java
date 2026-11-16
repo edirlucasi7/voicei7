@@ -6,6 +6,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.UUID;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +37,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tech.voice.icety.domain.model.Appointment;
 import tech.voice.icety.domain.model.BookingException;
+import tech.voice.icety.domain.model.BusinessSchedule;
 import tech.voice.icety.domain.model.CallSession;
 
 import static org.assertj.core.api.Assertions.*;
@@ -46,7 +48,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(ReservationDatabaseTest.TimeConfiguration.class)
 class ReservationDatabaseTest extends PostgresTestSupport {
     private static final Instant NOW = Instant.parse("2026-10-24T12:00:00Z");
-    private static final LocalDateTime SLOT = LocalDateTime.parse("2026-10-25T10:00:00");
+    private static final LocalDateTime SLOT = LocalDateTime.parse("2026-10-26T10:00:00");
     @Autowired ManageAppointmentsUseCase service;
     @Autowired AppointmentRepository appointments;
     @Autowired CallSessionRepository callSessions;
@@ -325,12 +327,44 @@ class ReservationDatabaseTest extends PostgresTestSupport {
     }
 
     @Test
+    void closedSundayCannotBeReservedOrConfirmedThroughHttp() throws Exception {
+        var sunday = LocalDateTime.parse("2026-10-25T10:00:00");
+        service.startCall("a");
+        mvc.perform(get("/api/appointments/availability").param("dateTime", sunday.toString()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.available").value(false));
+        mvc.perform(post("/api/appointments/reservations").contentType("application/json")
+                        .content("{\"callId\":\"a\",\"dateTime\":\"2026-10-25T10:00:00\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CONFLICT"));
+        assertThat(appointments.findTemporaryByCallId("a")).isEmpty();
+
+        // Simulate a reservation persisted before the closed-day policy was introduced.
+        var legacy = Appointment.reserve("a", sunday, NOW);
+        appointments.save(legacy);
+        mvc.perform(post("/api/appointments/{id}/confirm", legacy.id()).contentType("application/json")
+                        .content("{\"callId\":\"a\",\"customerName\":\"Ana\"}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CONFLICT"));
+        assertThat(appointments.findById(legacy.id()).orElseThrow().status()).isEqualTo(Appointment.Status.TEMPORARY);
+    }
+
+    @Test
+    void alreadyConfirmedSundayIsPreservedAndConfirmationRemainsIdempotent() {
+        var call = service.startCall("a").value();
+        var sunday = LocalDateTime.parse("2026-10-25T10:00:00");
+        var confirmed = Appointment.reserve("a", sunday, NOW)
+                .confirm(call, "Ana", NOW, new BusinessSchedule(Set.of()));
+        appointments.save(confirmed);
+        assertThat(service.confirm(confirmed.id(), "a", "Ana").appointment()).isEqualTo(confirmed);
+        assertThat(appointments.findById(confirmed.id())).contains(confirmed);
+        assertThat(service.available(sunday)).isFalse();
+    }
+
+    @Test
     void httpFlowReturnsCreationIdempotencyAndConfirmedState() throws Exception {
         mvc.perform(post("/api/calls").contentType("application/json").content("{\"callId\":\"a\"}"))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.heartbeatIntervalSeconds").value(30));
         mvc.perform(post("/api/calls").contentType("application/json").content("{\"callId\":\"a\"}"))
                 .andExpect(status().isOk());
-        var body = "{\"callId\":\"a\",\"dateTime\":\"2026-10-25T10:00:00\"}";
+        var body = "{\"callId\":\"a\",\"dateTime\":\"2026-10-26T10:00:00\"}";
         mvc.perform(post("/api/appointments/reservations").contentType("application/json").content(body))
                 .andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("TEMPORARY"))
                 .andExpect(jsonPath("$.expiresAt").exists());

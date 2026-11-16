@@ -19,5 +19,7 @@ abstract class PostgresTestSupport {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("reservation.cleanup-enabled", () -> "false");
+        registry.add("knowledge.ingest-on-startup", () -> "false");
+        registry.add("schedule.closed-days", () -> "SUNDAY");
     }
 }

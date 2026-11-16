@@ -70,6 +70,7 @@ class PostgresPersistenceTest {
                 "--spring.datasource.url=" + url,
                 "--spring.datasource.username=" + postgres.getUsername(),
                 "--spring.datasource.password=" + postgres.getPassword(),
-                "--reservation.cleanup-enabled=false", "--logging.level.root=WARN");
+                "--reservation.cleanup-enabled=false", "--knowledge.ingest-on-startup=false",
+                "--schedule.closed-days=SUNDAY", "--logging.level.root=WARN");
     }
 }

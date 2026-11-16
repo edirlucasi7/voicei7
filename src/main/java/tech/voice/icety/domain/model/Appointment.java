@@ -33,7 +33,7 @@ public record Appointment(UUID id, String callId, LocalDateTime dateTime, String
         }
     }
 
-    public Appointment confirm(CallSession call, String name, Instant now) {
+    public Appointment confirm(CallSession call, String name, Instant now, BusinessSchedule schedule) {
         requireOwner(call.id());
         if (name == null || name.isBlank()) {
             throw BookingException.invalid("customerName must not be blank");
@@ -48,6 +48,7 @@ public record Appointment(UUID id, String callId, LocalDateTime dateTime, String
             throw BookingException.conflict("Reservation cannot be confirmed");
         }
 
+        schedule.requireOpen(dateTime);
         return new Appointment(id, callId, dateTime, name.strip(), Status.CONFIRMED, createdAt, now);
     }
 

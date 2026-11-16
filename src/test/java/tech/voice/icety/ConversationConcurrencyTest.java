@@ -2,10 +2,12 @@ package tech.voice.icety;
 
 import java.time.Clock;
 import java.time.Duration;
+import java.time.DayOfWeek;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -23,6 +25,7 @@ import tech.voice.icety.application.port.in.ManageAppointmentsUseCase;
 import tech.voice.icety.application.port.in.ManageKnowledgeUseCase;
 import tech.voice.icety.application.port.out.CallSessionRepository;
 import tech.voice.icety.domain.model.CallSession;
+import tech.voice.icety.domain.model.BusinessSchedule;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
@@ -56,7 +59,8 @@ class ConversationConcurrencyTest {
             return new ChatResponse(List.of(new Generation(new AssistantMessage("reply " + text))));
         });
         var tools = new AppointmentTools(mock(ManageAppointmentsUseCase.class), calls, clock);
-        var assistant = new OllamaConversationAssistant(ChatClient.builder(model), tools, knowledge, calls, clock);
+        var assistant = new OllamaConversationAssistant(ChatClient.builder(model), tools, knowledge, calls, clock,
+                new BusinessSchedule(Set.of(DayOfWeek.SUNDAY)));
         // These distinct ids have the same String hash code.
         assertThat("Aa".hashCode()).isEqualTo("BB".hashCode());
         try (var executor = Executors.newFixedThreadPool(3)) {
