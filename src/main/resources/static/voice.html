@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Icety · Chamada de teste</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.6 system-ui,sans-serif; color:#e5edf5; background:#101820; }
+    * { box-sizing:border-box; } body { margin:0; } main { max-width:900px; margin:auto; padding:48px 24px; }
+    header { display:flex; justify-content:space-between; align-items:center; gap:20px; } h1 { font-size:30px; margin:8px 0; letter-spacing:-1px; }
+    .brand { color:#67dfd0; text-transform:uppercase; letter-spacing:3px; font-size:13px; } p { color:#a5b7c7; }
+    .card { margin:28px 0; padding:24px; border:1px solid #2c3b49; border-radius:18px; background:#16222d; }
+    .status { display:inline-flex; gap:10px; align-items:center; color:#bcece5; } .dot { height:9px; width:9px; background:#67dfd0; border-radius:50%; }
+    #call-id { overflow-wrap:anywhere; font:12px/1.5 monospace; color:#a5b7c7; margin-top:12px; }
+    .controls { display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; } button { font:inherit; font-weight:600; border:1px solid #415463; border-radius:10px; background:#243744; color:inherit; padding:12px 20px; cursor:pointer; }
+    #connect { background:#67dfd0; color:#102421; border-color:#67dfd0; } #disconnect { color:#ffb7b7; } button:disabled { opacity:.4; cursor:not-allowed; } button:focus-visible { outline:3px solid #9ef1ff; outline-offset:4px; }
+    #record[data-recording="true"] { background:#66313b; border-color:#dc7882; } #error { color:#ffc4b8; white-space:pre-wrap; } .hint { font-size:14px; } #history { display:flex; flex-direction:column; gap:16px; }
+    article { border-left:2px solid #5e7f96; padding:8px 16px; background:#1c2c38; border-radius:0 8px 8px 0; } article.assistant { border-color:#67dfd0; } article strong { font-size:12px; letter-spacing:1px; text-transform:uppercase; color:#a5b7c7; } article p { color:#e5edf5; margin:4px 0; white-space:pre-wrap; overflow-wrap:anywhere; }
+    .empty { text-align:center; padding:28px 12px; color:#879eaf; } small { color:#a5b7c7; } @media(max-width:600px) { main { padding:24px 16px; } header { display:block; } button { flex:1 1 40%; } }
+  </style>
+  <script type="module" src="/voice.js"></script>
+</head>
+<body>
+<main>
+  <header><div><div class="brand">Icety / laboratório de voz</div><h1>Uma conversa, por voz.</h1></div><small>Simulação local · português</small></header>
+  <p>Faça uma pergunta ou teste um agendamento. Grave uma fala por vez e ouça a resposta do atendimento.</p>
+  <section class="card" aria-label="Controles da ligação">
+    <div class="status" role="status" aria-live="polite"><span class="dot"></span><span id="status">Verificando disponibilidade…</span></div>
+    <div id="call-id">Nenhuma ligação iniciada</div>
+    <div class="controls">
+      <button id="connect" disabled>Ligar</button>
+      <button id="record" disabled>Gravar</button>
+      <button id="send" disabled>Enviar fala</button>
+      <button id="disconnect" disabled>Desligar</button>
+    </div>
+    <p class="hint">Ao gravar novamente, a voz anterior para. Isso não desfaz ações já executadas na agenda. Máximo de 30 segundos por fala.</p>
+    <p id="error" role="alert"></p>
+  </section>
+  <section aria-label="Transcrição da conversa"><h2>Conversa</h2><div id="history"><p class="empty">Sua transcrição e as respostas aparecerão aqui.</p></div></section>
+  <p class="hint">Voz gerada localmente por Piper. A transcrição usa faster-whisper e o atendimento usa Ollama, documentos e a agenda local. Não é necessária chave de API. Use dados fictícios nesta simulação.</p>
+</main>
+</body>
+</html>

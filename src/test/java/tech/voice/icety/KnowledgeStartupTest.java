@@ -90,6 +90,6 @@ class KnowledgeStartupTest extends PostgresTestSupport {
                 "--spring.ai.ollama.base-url=" + ollamaUrl,
                 "--spring.ai.ollama.embedding.options.model=nomic-embed-text",
                 "--schedule.closed-days=SUNDAY", "--reservation.cleanup-enabled=false",
-                "--logging.level.root=OFF", "--spring.main.banner-mode=off");
+                "--logging.level.root=OFF", "--spring.main.banner-mode=off", "--voice.enabled=false");
     }
 }

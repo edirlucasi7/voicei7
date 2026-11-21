@@ -31,49 +31,67 @@ public class AppointmentTools {
     public ToolResult checkAvailability(
             @ToolParam(description = "Data/hora em America/Fortaleza, exemplo: 2026-10-20T14:30:00")
             String dateTime, ToolContext context) {
-        return execute(context, () -> appointments.available(parseTime(dateTime)));
+        return execute(context, "checkAvailability", () -> appointments.available(parseTime(dateTime)));
     }
 
-    @Tool(description = "Reserva temporariamente o horário solicitado pelo cliente. Não confirma o agendamento. Use data/hora local ISO 8601 sem fuso, como 2026-10-20T10:00:00.")
+    @Tool(returnDirect = true, description = "Reserva temporariamente o horário solicitado pelo cliente. Não confirma o agendamento. Use data/hora local ISO 8601 sem fuso, como 2026-10-20T10:00:00.")
     public ToolResult reserveAppointment(
             @ToolParam(description = "Data/hora em America/Fortaleza, exemplo: 2026-10-20T14:30:00")
             String dateTime, ToolContext context) {
-        return execute(context, () -> appointments.reserve(callId(context), parseTime(dateTime)).value());
+        return execute(context, "reserveAppointment", () -> appointments.reserve(callId(context), parseTime(dateTime)).value());
     }
 
-    @Tool(description = "Libera uma reserva temporária desta ligação antes de escolher outro horário. Não cancela agendamento confirmado.")
-    public ToolResult releaseReservation(String reservationId, ToolContext context) {
-        return execute(context, () -> appointments.release(UUID.fromString(reservationId), callId(context)));
+    @Tool(returnDirect = true, description = "Libera uma reserva temporária desta ligação antes de escolher outro horário. Não cancela agendamento confirmado.")
+    public ToolResult releaseReservation(@ToolParam(required = false) String reservationId, ToolContext context) {
+        return execute(context, "releaseReservation", () -> appointments.release(reservationId(reservationId, context), callId(context)));
     }
 
-    @Tool(description = "Confirma uma reserva desta ligação SOMENTE após o cliente confirmar explicitamente o horário e informar o nome. Nunca use para mera consulta ou criação de reserva.")
-    public ToolResult confirmAppointment(String reservationId, String customerName,
+    @Tool(returnDirect = true, description = "Confirma a reserva temporária atual após o cliente confirmar explicitamente o horário e informar o nome. reservationId pode ser omitido: o servidor usa a reserva desta ligação. Nunca use para mera consulta ou criação de reserva.")
+    public ToolResult confirmAppointment(@ToolParam(required = false) String reservationId, String customerName,
             @ToolParam(description = "True somente se o cliente confirmou explicitamente o agendamento")
             boolean explicitlyConfirmed, ToolContext context) {
-        return execute(context, () -> {
+        return execute(context, "confirmAppointment", () -> {
             if (!explicitlyConfirmed) {
                 throw BookingException.invalid("Explicit customer confirmation is required");
             }
 
-            return appointments.confirm(UUID.fromString(reservationId), callId(context), customerName);
+            var id = reservationId(reservationId, context);
+            if (context.getContext().containsKey("pendingReservationId")
+                    && !id.toString().equals(context.getContext().get("pendingReservationId"))) {
+                throw BookingException.invalid("A reservation must be presented before confirmation in a later message");
+            }
+
+            return appointments.confirm(id, callId(context), customerName);
         });
     }
 
-    private ToolResult execute(ToolContext context, Supplier<Object> action) {
+    private ToolResult execute(ToolContext context, String operation, Supplier<Object> action) {
+        var log = context.getContext().get("appointmentToolLog") instanceof AppointmentToolLog existing
+                ? existing : new AppointmentToolLog();
         try {
             var call = calls.findById(callId(context)).orElseThrow(() ->
                     new BookingException(BookingException.Kind.NOT_FOUND, "Call not found"));
             call.requireActive(clock.instant());
-            return new ToolResult(true, "OK", action.get());
+            return log.record(operation, new ToolResult(true, "OK", action.get()));
         } catch (BookingException exception) {
-            return new ToolResult(false, exception.kind().name(), exception.getMessage());
+            return log.record(operation, new ToolResult(false, exception.kind().name(), exception.getMessage()));
         } catch (IllegalArgumentException | DateTimeException exception) {
-            return new ToolResult(false, "INVALID", "Invalid tool arguments; ask the customer to clarify");
+            return log.record(operation, new ToolResult(false, "INVALID", "Invalid tool arguments; ask the customer to clarify"));
         } catch (PessimisticLockingFailureException exception) {
-            return new ToolResult(false, "BUSY", "Schedule is busy; retry shortly");
+            return log.record(operation, new ToolResult(false, "BUSY", "Schedule is busy; retry shortly"));
         } catch (DataIntegrityViolationException exception) {
-            return new ToolResult(false, "CONFLICT", "Appointment time or call already has a reservation");
+            return log.record(operation, new ToolResult(false, "CONFLICT", "Appointment time or call already has a reservation"));
         }
+    }
+
+    private UUID reservationId(String requested, ToolContext context) {
+        var id = requested == null || requested.isBlank()
+                ? (String) context.getContext().get("pendingReservationId") : requested;
+        if (id == null || id.isBlank()) {
+            throw BookingException.invalid("No current reservation to confirm or release");
+        }
+
+        return UUID.fromString(id);
     }
 
     private LocalDateTime parseTime(String dateTime) {

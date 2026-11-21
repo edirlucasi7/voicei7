@@ -49,6 +49,11 @@ class ConversationConcurrencyTest {
         when(model.call(any(Prompt.class))).thenAnswer(invocation -> {
             Prompt prompt = invocation.getArgument(0);
             var text = prompt.getUserMessage().getText();
+            if (prompt.getSystemMessage().getText().contains("Classifique o pedido atual")) {
+                return new ChatResponse(List.of(new Generation(new AssistantMessage(
+                        "{\"action\":\"NONE\",\"explicitlyConfirmed\":false}"))));
+            }
+
             if (text.equals("first")) {
                 firstEntered.countDown();
                 assertThat(releaseFirst.await(5, TimeUnit.SECONDS)).isTrue();
@@ -60,7 +65,7 @@ class ConversationConcurrencyTest {
         });
         var tools = new AppointmentTools(mock(ManageAppointmentsUseCase.class), calls, clock);
         var assistant = new OllamaConversationAssistant(ChatClient.builder(model), tools, knowledge, calls, clock,
-                new BusinessSchedule(Set.of(DayOfWeek.SUNDAY)));
+                new BusinessSchedule(Set.of(DayOfWeek.SUNDAY)), mock(tech.voice.icety.application.port.out.AppointmentRepository.class));
         // These distinct ids have the same String hash code.
         assertThat("Aa".hashCode()).isEqualTo("BB".hashCode());
         try (var executor = Executors.newFixedThreadPool(3)) {

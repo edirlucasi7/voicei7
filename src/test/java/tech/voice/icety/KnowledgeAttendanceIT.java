@@ -56,7 +56,28 @@ class KnowledgeAttendanceIT extends PostgresTestSupport {
             assertThat(attendance.reply(callId, "Qual é o endereço da clínica?"))
                     .containsIgnoringCase("Rua das Flores");
         } finally {
-            appointments.endCall(callId);
+            endTestCall(callId);
+        }
+    }
+
+    @Test
+    void answersNaturallyWithoutInventingOpeningHoursOrExposingToolNames() {
+        String callId = "real-natural-" + UUID.randomUUID();
+        appointments.startCall(callId);
+        try {
+            var opening = attendance.reply(callId,
+                    "Qual é o horário de funcionamento? Vocês atendem aos domingos?");
+            assertThat(opening).isNotBlank().containsIgnoringCase("domingo")
+                    .doesNotContain("08:00", "18:00");
+            var availability = attendance.reply(callId,
+                    "Pode consultar se 20 de outubro de 2026 às 09h está livre?");
+            for (var reply : java.util.List.of(opening, availability)) {
+                assertThat(reply.toLowerCase(java.util.Locale.ROOT)).isNotBlank()
+                        .doesNotContain("checkavailability", "reserveappointment", "confirmappointment",
+                                "releasereservation", "america/fortaleza", "função", "ferramenta", "tool", "function");
+            }
+        } finally {
+            endTestCall(callId);
         }
     }
 
@@ -70,7 +91,30 @@ class KnowledgeAttendanceIT extends PostgresTestSupport {
             assertThat(repository.findTemporaryByCallId(callId)).isEmpty();
             assertThat(reply).isNotBlank().containsIgnoringCase("domingo");
         } finally {
-            appointments.endCall(callId);
+            endTestCall(callId);
+        }
+    }
+
+    @Test
+    void reservesAndConfirmsNaturalTwoTurnBooking() {
+        String callId = "real-two-turn-" + UUID.randomUUID();
+        appointments.startCall(callId);
+        try {
+            var reply = attendance.reply(callId,
+                    "Quero marcar uma consulta para as quatro horas da tarde de hoje.");
+            var reservation = repository.findTemporaryByCallId(callId)
+                    .orElseThrow(() -> new AssertionError("Model did not reserve: " + reply));
+            assertThat(reservation.dateTime()).isEqualTo("2026-10-19T16:00:00");
+            assertThat(reply).contains("reservado temporariamente", "ainda não está confirmado")
+                    .doesNotContain("expira às 17", "consulta foi marcada");
+            var confirmation = attendance.reply(callId,
+                    "Meu nome é Lucas e eu quero confirmar o agendamento.");
+            var confirmed = repository.findById(reservation.id()).orElseThrow();
+            assertThat(confirmed.status()).as(confirmation).isEqualTo(Appointment.Status.CONFIRMED);
+            assertThat(confirmed.customerName()).isEqualTo("Lucas");
+            assertThat(confirmation).contains("Agendamento confirmado", "19/10/2026 às 16:00", "Lucas");
+        } finally {
+            endTestCall(callId);
         }
     }
 
@@ -91,7 +135,13 @@ class KnowledgeAttendanceIT extends PostgresTestSupport {
             assertThat(confirmed.status()).isEqualTo(Appointment.Status.CONFIRMED);
             assertThat(confirmed.customerName()).isEqualTo("Ana Silva");
         } finally {
-            appointments.endCall(callId);
+            endTestCall(callId);
         }
     }
+    private void endTestCall(String callId) {
+        appointments.endCall(callId);
+        jdbc.update("DELETE FROM appointments WHERE call_id = ?", callId);
+        jdbc.update("DELETE FROM call_sessions WHERE id = ?", callId);
+    }
+
 }

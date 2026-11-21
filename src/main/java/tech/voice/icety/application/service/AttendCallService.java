@@ -13,6 +13,12 @@ public class AttendCallService implements AttendCallUseCase {
     }
 
     @Override
+    public void playbackInterrupted(String callId) {
+        CallSession.validateId(callId);
+        assistant.playbackInterrupted(callId);
+    }
+
+    @Override
     public String reply(String callId, String text) {
         CallSession.validateId(callId);
         if (text == null || text.isBlank()) {
