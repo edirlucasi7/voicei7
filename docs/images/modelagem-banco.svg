@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="740" viewBox="0 0 1080 740" role="img" aria-labelledby="title desc">
+<title id="title">Tabelas do banco Icety</title>
+<desc id="desc">Diagrama simples das seis tabelas. appointments referencia call_sessions. knowledge_source associa-se a vector_store por metadados, sem chave estrangeira.</desc>
+<rect width="1080" height="740" style="fill:white;stroke:none"/>
+<style>text{font-family:monospace;font-size:15px;fill:black}.name{font-size:17px;font-weight:bold}rect,path,line{stroke:black;stroke-width:1;fill:none}</style>
+<rect x="30" y="30" width="355" height="92"/>
+<text x="207.5" y="55" text-anchor="middle" class="name">knowledge_source</text>
+<line x1="30" y1="66" x2="385" y2="66"/>
+<text x="40" y="90">PK path : varchar(1024)</text>
+<text x="40" y="115">content_hash : varchar(64)</text>
+<rect x="660" y="30" width="390" height="142"/>
+<text x="855.0" y="55" text-anchor="middle" class="name">vector_store</text>
+<line x1="660" y1="66" x2="1050" y2="66"/>
+<text x="670" y="90">PK id : uuid</text>
+<text x="670" y="115">content : text</text>
+<text x="670" y="140">metadata : json</text>
+<text x="670" y="165">embedding : vector(768)</text>
+<path d="M385 90 H660" stroke-dasharray="5 4"/>
+<text x="398" y="72">1</text><text x="635" y="72">*</text>
+<text x="405" y="117">path = metadata.source</text>
+<text x="405" y="140">(sem FK)</text>
+<rect x="30" y="225" width="355" height="67"/>
+<text x="207.5" y="250" text-anchor="middle" class="name">knowledge_catalog</text>
+<line x1="30" y1="261" x2="385" y2="261"/>
+<text x="40" y="285">PK id : smallint (= 1)</text>
+<text x="30" y="330">Coordena ingestões; sem FK.</text>
+<rect x="30" y="390" width="355" height="142"/>
+<text x="207.5" y="415" text-anchor="middle" class="name">call_sessions</text>
+<line x1="30" y1="426" x2="385" y2="426"/>
+<text x="40" y="450">PK id : varchar(128)</text>
+<text x="40" y="475">status : varchar(16)</text>
+<text x="40" y="500">last_activity_at : timestamptz</text>
+<text x="40" y="525">expires_at : timestamptz</text>
+<rect x="660" y="310" width="390" height="217"/>
+<text x="855.0" y="335" text-anchor="middle" class="name">appointments</text>
+<line x1="660" y1="346" x2="1050" y2="346"/>
+<text x="670" y="370">PK id : uuid</text>
+<text x="670" y="395">FK call_id : varchar(128)</text>
+<text x="670" y="420">date_time : timestamp</text>
+<text x="670" y="445">customer_name : text</text>
+<text x="670" y="470">status : varchar(16)</text>
+<text x="670" y="495">created_at : timestamptz</text>
+<text x="670" y="520">updated_at : timestamptz</text>
+<path d="M385 465 H660"/>
+<text x="398" y="450">1</text><text x="635" y="450">*</text>
+<text x="435" y="490">call_id → id</text>
+<rect x="30" y="570" width="355" height="67"/>
+<text x="207.5" y="595" text-anchor="middle" class="name">schedule</text>
+<line x1="30" y1="606" x2="385" y2="606"/>
+<text x="40" y="630">PK id : smallint (= 1)</text>
+<text x="30" y="675">Coordena alterações da agenda; sem FK.</text>
+<text x="30" y="720">PK: chave primária | FK: chave estrangeira | tracejado: associação lógica</text>
+</svg>
