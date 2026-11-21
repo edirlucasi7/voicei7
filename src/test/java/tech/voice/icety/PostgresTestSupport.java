@@ -2,8 +2,10 @@ package tech.voice.icety;
 
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.test.context.TestPropertySource;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 
+@TestPropertySource(properties = "voice.enabled=false")
 abstract class PostgresTestSupport {
     static final PostgreSQLContainer POSTGRES = new PostgreSQLContainer(
             org.testcontainers.utility.DockerImageName.parse("pgvector/pgvector:pg17")

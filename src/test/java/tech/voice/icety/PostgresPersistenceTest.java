@@ -29,6 +29,11 @@ class PostgresPersistenceTest {
                 service.startCall("restart-test");
                 var time = LocalDateTime.now(Appointment.ZONE).plusDays(1)
                         .withHour(10).withMinute(0).withSecond(0).withNano(0);
+                var schedule = context.getBean(tech.voice.icety.domain.model.BusinessSchedule.class);
+                while (!schedule.isOpen(time)) {
+                    time = time.plusDays(1);
+                }
+
                 var id = service.reserve("restart-test", time).value().appointment().id();
                 service.confirm(id, "restart-test", "Ana");
                 // Compare database snapshots at PostgreSQL timestamp precision.
@@ -71,6 +76,6 @@ class PostgresPersistenceTest {
                 "--spring.datasource.username=" + postgres.getUsername(),
                 "--spring.datasource.password=" + postgres.getPassword(),
                 "--reservation.cleanup-enabled=false", "--knowledge.ingest-on-startup=false",
-                "--schedule.closed-days=SUNDAY", "--logging.level.root=WARN");
+                "--schedule.closed-days=SUNDAY", "--voice.enabled=false", "--logging.level.root=WARN");
     }
 }

@@ -32,7 +32,8 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static tech.voice.icety.domain.model.UserIntent.*;
 import static tech.voice.icety.domain.model.DayPeriod.*;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE)
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.NONE,
+        properties = "spring.ai.ollama.chat.options.model=qwen2.5:3b")
 @Import({AppointmentTestConfiguration.class, AppointmentParsingTest.HttpConfiguration.class})
 class AppointmentParsingTest extends PostgresTestSupport {
 

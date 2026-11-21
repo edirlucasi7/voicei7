@@ -10,18 +10,18 @@ Requisitos: Java 21 e Docker com Compose. Execute os comandos na raiz do projeto
 cp .env.example .env
 # Preencha DB_PASSWORD no .env com uma senha aleatória antes de continuar.
 docker compose up -d --wait postgres ollama
-docker compose exec ollama ollama pull qwen2.5:3b
+docker compose exec ollama ollama pull qwen2.5:7b
 docker compose exec ollama ollama pull nomic-embed-text
 ./mvnw -Plocal-ai verify
 ```
 
-O modelo de conversa tem aproximadamente 1,9 GB e o de embeddings aproximadamente 274 MB, além das imagens Docker. A primeira inferência carrega o modelo na memória e pode demorar; a execução usa CPU e não exige GPU. O volume Docker preserva o modelo entre reinicializações. Para parar o serviço:
+O modelo de conversa tem aproximadamente 4,7 GB e o de embeddings aproximadamente 274 MB, além das imagens Docker. A primeira inferência carrega o modelo na memória e pode demorar; a execução usa CPU e não exige GPU. O volume Docker preserva o modelo entre reinicializações. Para parar o serviço:
 
 ```bash
 docker compose stop ollama
 ```
 
-Não é necessário ter uma conta OpenAI ou uma chave de API. O modelo executa localmente. Após baixar a imagem, o modelo e as dependências Maven, a extração não depende de um serviço externo.
+O atendimento e a simulação de voz executam localmente, sem chave ou cobrança de API. Após baixar imagens, modelos e dependências Maven, o processamento não depende de um serviço externo.
 
 ## Testar pelo endpoint
 
@@ -69,7 +69,7 @@ O Spring importa o `.env` da raiz como um arquivo de propriedades. O `.env` fica
 | Variável | Padrão | Uso |
 | --- | --- | --- |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Endereço do Ollama |
-| `OLLAMA_MODEL` | `qwen2.5:3b` | Modelo previamente baixado no Ollama |
+| `OLLAMA_MODEL` | `qwen2.5:7b` | Modelo previamente baixado no Ollama |
 | `OLLAMA_EMBEDDING_MODEL` | `nomic-embed-text` | Modelo local de embeddings com 768 dimensões |
 | `KNOWLEDGE_DIRECTORY` | `knowledge` | Pasta de arquivos TXT/Markdown UTF-8 |
 | `KNOWLEDGE_INGEST_ON_STARTUP` | `true` | Atualiza o índice documental ao iniciar a aplicação |
@@ -351,8 +351,27 @@ preservando transações, propriedade, expiração e concorrência. Não há tra
 aberta durante inferência. Confirmação depende da interpretação da fala pela LLM; o prompt
 exige confirmação explícita e a tool rejeita `explicitlyConfirmed=false`.
 
+Reserva, confirmação e liberação retornam diretamente ao atendimento: a mensagem em
+português é formada a partir do resultado real do caso de uso, sem uma segunda geração
+da LLM para anunciar sucesso. Reserva temporária é apresentada como temporária, com
+pedido de nome e confirmação, sem inventar um prazo de expiração. Uma confirmação só
+pode atuar sobre a reserva que já existia no início da mensagem; não é permitido criar
+e confirmar automaticamente no mesmo turno.
+
+Se o modelo apenas anuncia uma ação em texto sem executar uma tool, uma interpretação
+estruturada identifica o pedido e o encaminha às mesmas operações protegidas. Essa
+interpretação não executa instruções dos documentos nem contorna as regras de domínio.
+
+A cada mensagem, o servidor consulta a reserva temporária atual no banco e fornece seu
+identificador internamente. A LLM pode omitir `reservationId` ao confirmar ou liberar;
+se informar um ID, a propriedade continua sendo validada. Enquanto houver reserva
+pendente, uma resposta livre sem operação verificável reapresenta o estado real da
+reserva em vez de tratar o texto do modelo como confirmação. Falhas de geração após
+uma operação concluída não apagam seu resultado nem provocam repetição automática.
+
 O histórico fica em memória por ligação, limitado a 20 mensagens, incluindo resultados de tools,
-para preservar o identificador da reserva entre turnos. Mensagens da mesma ligação são
+para preservar o contexto da conversa entre turnos. O ID da reserva também é recuperado
+do banco, independentemente desse histórico. Mensagens da mesma ligação são
 serializadas. A limpeza periódica remove históricos de ligações encerradas ou expiradas.
 Reiniciar perde o histórico, mas preserva os documentos indexados e a agenda.
 O endpoint não inicia nem renova ligações. Retorna `400` para texto inválido, `404` para ligação
@@ -377,3 +396,121 @@ reservaria sem executar a reserva. Em avaliações anteriores, o perfil também 
 falhas de extração nos testes do parser. O modelo permanece configurável por `OLLAMA_MODEL`;
 o fluxo completo com esse modelo ainda não está aprovado pela avaliação real, mesmo com
 os testes determinísticos passando.
+
+## Simular uma chamada por voz no navegador
+
+O fluxo inteiro roda na sua máquina, sem chave ou cobrança de API:
+
+**Microfone → faster-whisper → Ollama com RAG/tools → Piper → alto-falante.**
+
+Ollama gera as respostas e executa as tools pelos casos de uso existentes. O modelo de
+conversa atual recebe texto; a transcrição é feita pelo faster-whisper e a síntese pelo
+Piper, em um serviço Docker local de áudio. As validações da agenda continuam no Java.
+
+No `.env`, habilite a voz:
+
+```properties
+VOICE_ENABLED=true
+VOICE_TRANSCRIPTION_URL=http://localhost:8090/transcribe
+VOICE_SYNTHESIS_URL=http://localhost:8090/synthesize
+VOICE_TIMEOUT=60s
+WHISPER_MODEL=small
+PIPER_VOICE=pt_BR-faber-medium
+```
+
+Nenhuma variável `OPENAI_*` é utilizada. As URLs acima são para o Spring executando na
+máquina; se executá-lo em outro container, use o hostname `audio` em vez de `localhost`.
+
+Suba a infraestrutura, incluindo o perfil de voz:
+
+```bash
+docker compose --profile voice up -d --build --wait postgres ollama audio
+./mvnw spring-boot:run
+```
+
+Na primeira inicialização, `audio` baixa o modelo Whisper `small` e a voz brasileira
+`pt_BR-faber-medium`. O volume `audio_models` preserva os arquivos. O serviço só fica
+saudável depois de carregar os dois modelos. Ele usa CPU e não exige GPU. Reserve
+alguns minutos e espaço em disco para o primeiro build/download. Depois disso, os
+modelos são carregados dos arquivos locais; as gravações não são enviadas à nuvem.
+`WHISPER_MODEL` aceita `tiny`, `base`, `small` ou `medium`; modelos menores podem reduzir
+a latência e a precisão. Após alterar modelo ou voz, recrie o serviço de áudio.
+
+Confira a prontidão:
+
+```bash
+docker compose --profile voice ps
+curl http://localhost:8090/health
+curl http://localhost:8080/api/voice/status
+```
+
+Abra `http://localhost:8080/voice.html` no Chrome/Chromium usando localhost ou HTTPS e
+permita o microfone:
+
+1. Clique em **Ligar**. A página cria uma ligação e envia heartbeat automaticamente.
+2. Clique em **Gravar**, fale e clique em **Enviar fala**. Limite: 30 segundos.
+3. Confira a transcrição e a resposta na tela e ouça o áudio.
+4. Para interromper, clique novamente em **Gravar**. O áudio anterior para e blocos
+   atrasados são descartados. Grave a nova fala e envie normalmente.
+5. Clique em **Desligar** para liberar microfone e conexões e encerrar a ligação.
+
+A interrupção é manual nesta etapa. Detecção automática por fala/silêncio e telefonia
+ficam para uma evolução. Uma nova fala pode aguardar enquanto o atendimento anterior
+termina; existe no máximo uma fala pendente. Interromper o áudio não cancela uma tool
+em execução nem desfaz uma operação concluída. O contexto seguinte informa quando a
+resposta anterior pode não ter sido ouvida integralmente.
+
+Ao desligar ou perder a conexão, o encerramento libera reservas temporárias e preserva
+agendamentos confirmados. Se o encerramento não chegar ao servidor, a expiração por
+falta de heartbeat continua protegendo a agenda. Sessões expiradas têm o WebSocket
+fechado na verificação periódica. Cada turno tem supervisão de dois minutos; conexões
+que excedem esse limite são encerradas sem interromper à força uma transação em curso.
+As chamadas de áudio têm timeout configurável por `VOICE_TIMEOUT`.
+
+### Contrato de áudio
+
+- `GET /api/voice/status`: habilitação, sample rate e limite de gravação, sem segredos.
+- `WS /api/calls/{callId}/voice`: exige ligação ativa, mesma origem no navegador e uma
+  única conexão de voz por ligação. As rotas HTTP de texto continuam disponíveis.
+- `input.start` inclui UUID `turnId`, `format: "pcm16"`, `sampleRate: 24000`, `channels: 1`
+  e `playbackInterrupted` quando havia áudio ainda sendo reproduzido. Seguem frames
+  binários PCM16 little-endian de até 9600 bytes e `input.commit` para o mesmo turno.
+- O servidor monta WAV em memória e envia ao serviço local. Retorna `ready`,
+  `input.started`, `state`, `transcript`, `reply`, `audio.delta`, `error` e `turn.done`.
+  Eventos de turno incluem `turnId`; `audio.delta.audio` contém PCM16 mono 24 kHz em
+  base64. IDs repetidos e sequências inválidas são recusados.
+- Estados: `queued`, `transcribing`, `processing`, `speaking`. As falhas distinguem
+  `TRANSCRIPTION_FAILED`, `ATTENDANCE_FAILED`, `SYNTHESIS_FAILED` e erros da ligação.
+- O serviço `audio` publica apenas em `127.0.0.1:8090`, expõe `/health`, recebe WAV
+  multipart em `POST /transcribe` e `{ "text": "..." }` em `POST /synthesize`. A síntese
+  retorna streaming HTTP de PCM16 mono 24 kHz, com conversão da frequência da voz Piper.
+  Texto vazio, WAV inválido e gravações acima de 30 segundos são rejeitados. Gravações
+  não são salvas; buffers de entrada e saída são limitados.
+
+Se a síntese falhar, o texto permanece visível. Se uma tool já tiver concluído antes de
+uma falha, a agenda já pode ter sido alterada; não há repetição automática do turno.
+A instabilidade do `qwen2.5:3b` descrita acima também pode aparecer no atendimento por voz.
+
+As integrações usam as APIs dos projetos [faster-whisper](https://github.com/SYSTRAN/faster-whisper)
+e [Piper](https://github.com/OHF-Voice/piper1-gpl/blob/main/docs/API_PYTHON.md). Os modelos
+ficam no volume local, incluindo o arquivo de configuração da voz baixada.
+
+`./mvnw test` verifica o fluxo com provedores simulados, WebSocket real local, validações,
+fila, interrupção, origem e bloqueio de domingos. Não baixa modelos de áudio nem exige o
+serviço `audio`. Os contratos do serviço Python podem ser testados no container:
+
+```bash
+docker compose --profile voice exec audio python -m unittest -v
+```
+
+O teste completo de fala e qualidade da voz deve ser feito na página com os modelos reais.
+
+### Avaliação do fluxo de reserva em dois turnos
+
+O atendimento usa `qwen2.5:7b` por padrão. No cenário real “Quero marcar uma consulta
+para as quatro horas da tarde de hoje”, seguido de “Meu nome é Lucas e eu quero
+confirmar o agendamento”, foi verificada a reserva às 16h, ainda temporária no primeiro
+turno, e a confirmação com o nome Lucas no segundo. O modelo 3b interpretou 16h como 14h
+nessa avaliação. A execução deve ser verificada em novos cenários; uma avaliação bem-sucedida
+não garante interpretação perfeita de qualquer fala. O 7b usa mais memória e pode aumentar
+a latência em CPU, especialmente quando a interpretação estruturada adicional é necessária.

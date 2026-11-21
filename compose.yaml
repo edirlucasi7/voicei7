@@ -20,7 +20,24 @@ services:
       - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
+  audio:
+    profiles: [voice]
+    build: ./infra/audio
+    ports:
+      - "127.0.0.1:8090:8090"
+    environment:
+      WHISPER_MODEL: ${WHISPER_MODEL:-small}
+      PIPER_VOICE: ${PIPER_VOICE:-pt_BR-faber-medium}
+    volumes:
+      - audio_models:/models
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 15m
 
 volumes:
   postgres_data:
   ollama_data:
+  audio_models:
