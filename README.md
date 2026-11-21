@@ -504,13 +504,3 @@ docker compose --profile voice exec audio python -m unittest -v
 ```
 
 O teste completo de fala e qualidade da voz deve ser feito na página com os modelos reais.
-
-### Avaliação do fluxo de reserva em dois turnos
-
-O atendimento usa `qwen2.5:7b` por padrão. No cenário real “Quero marcar uma consulta
-para as quatro horas da tarde de hoje”, seguido de “Meu nome é Lucas e eu quero
-confirmar o agendamento”, foi verificada a reserva às 16h, ainda temporária no primeiro
-turno, e a confirmação com o nome Lucas no segundo. O modelo 3b interpretou 16h como 14h
-nessa avaliação. A execução deve ser verificada em novos cenários; uma avaliação bem-sucedida
-não garante interpretação perfeita de qualquer fala. O 7b usa mais memória e pode aumentar
-a latência em CPU, especialmente quando a interpretação estruturada adicional é necessária.
